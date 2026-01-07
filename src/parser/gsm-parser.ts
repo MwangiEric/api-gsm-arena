@@ -1,16 +1,27 @@
 import axios from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import cheerio from "cheerio";
 
 import { PhoneInfo } from "types";
 import { GSM_ARENA, SEARCH_PARAMS } from "../../config";
 
+// ---------- proxy axios instance ----------
+const proxyAgent = new HttpsProxyAgent(
+  "http://nrjjxhvq-rotate:fu1ex5d5925r@p.webshare.io:80"
+);
+const axiosGSM = axios.create({
+  httpsAgent: proxyAgent,
+  proxy: false,
+  timeout: 15000,
+});
+
+// ---------- search ----------
 export const scrapeSearch = async (query: string, list: PhoneInfo[] = []) => {
   try {
-    const searchDocument = await axios.get(
-      `${GSM_ARENA}/${SEARCH_PARAMS}=${query}`
+    const { data } = await axiosGSM.get(
+      `${GSM_ARENA}/${SEARCH_PARAMS}=${encodeURIComponent(query)}`
     );
-
-    const $ = cheerio.load(searchDocument.data);
+    const $ = cheerio.load(data);
 
     $("div#review-body > .makers > ul > li").each((_i, el) => {
       list.push({
@@ -19,46 +30,29 @@ export const scrapeSearch = async (query: string, list: PhoneInfo[] = []) => {
           .find("a > strong > span")
           .contents()
           .map(function () {
-            if (this.type === "text") {
-              return $(this).text();
-            } else if (this.tagName === "br") {
-              return " ";
-            }
+            if (this.type === "text") return $(this).text();
+            if (this.tagName === "br") return " ";
           })
           .get()
           .join(""),
         image: $(el).find("a > img").attr("src"),
       });
     });
-
     return list;
   } catch (error) {
-    console.log(error);
+    console.error("scrapeSearch error:", error);
+    return [];
   }
 };
 
+// ---------- info ----------
 export const scrapeInfo = async (id: string) => {
   try {
-    const infoDocument = await axios.get(`${GSM_ARENA}/${id}`);
+    const { data } = await axiosGSM.get(`${GSM_ARENA}/${id}`);
+    const $ = cheerio.load(data);
 
-    const $ = cheerio.load(infoDocument.data);
-
-    const name = $("div.review-header > div > div")
-      .find(".specs-phone-name-title")
-      .text();
-
-    const cover = $("div.review-header > div > div > div.specs-photo-main > a")
-      .find("img")
-      .attr("src");
-
-    const network = $("div#specs-list table")
-      .first()
-      .find("tr")
-      .first()
-      .find("td")
-      .last()
-      .find("a")
-      .text();
+    const name = $("div.review-header > div > div").find(".specs-phone-name-title").text();
+    const cover = $("div.review-header > div > div > div.specs-photo-main > a").find("img").attr("src");
 
     const launchTable = $("div#specs-list table:eq(1)");
     const announced = launchTable.find("td[data-spec='year']").text();
@@ -73,15 +67,9 @@ export const scrapeInfo = async (id: string) => {
     const displayTable = $("div#specs-list table:eq(3)");
     const type = displayTable.find("td[data-spec='displaytype']").text();
     const size = displayTable.find("td[data-spec='displaysize']").text();
-    const resolution = displayTable
-      .find("td[data-spec='displayresolution']")
-      .text();
-    const protection = displayTable
-      .find("td[data-spec='displayprotection']")
-      .text();
-    const displayOther = displayTable
-      .find("td[data-spec='displayother']")
-      .text();
+    const resolution = displayTable.find("td[data-spec='displayresolution']").text();
+    const protection = displayTable.find("td[data-spec='displayprotection']").text();
+    const displayOther = displayTable.find("td[data-spec='displayother']").text();
 
     const platformTable = $("div#specs-list table:eq(4)");
     const os = platformTable.find("td[data-spec='os']").text();
@@ -95,26 +83,14 @@ export const scrapeInfo = async (id: string) => {
     const otherMemory = memoryTable.find("td[data-spec='memoryother']").text();
 
     const mainCameraTable = $("div#specs-list table:eq(6)");
-    const mainModules = mainCameraTable
-      .find("td[data-spec='cam1modules']")
-      .text()
-      .trim();
-    const mainFeatures = mainCameraTable
-      .find("td[data-spec='cam1features']")
-      .text();
+    const mainModules = mainCameraTable.find("td[data-spec='cam1modules']").text().trim();
+    const mainFeatures = mainCameraTable.find("td[data-spec='cam1features']").text();
     const mainVideo = mainCameraTable.find("td[data-spec='cam1video']").text();
 
     const selfieCameraTable = $("div#specs-list table:eq(7)");
-    const selfieModules = selfieCameraTable
-      .find("td[data-spec='cam2modules']")
-      .text()
-      .trim();
-    const selfieFeatures = selfieCameraTable
-      .find("td[data-spec='cam2features']")
-      .text();
-    const selfieVideo = selfieCameraTable
-      .find("td[data-spec='cam2video']")
-      .text();
+    const selfieModules = selfieCameraTable.find("td[data-spec='cam2modules']").text().trim();
+    const selfieFeatures = selfieCameraTable.find("td[data-spec='cam2features']").text();
+    const selfieVideo = selfieCameraTable.find("td[data-spec='cam2video']").text();
 
     const soundTable = $("div#specs-list table:eq(8)");
     const loudSpeaker = soundTable.find("tr:eq(0) td.nfo").text().trim();
@@ -134,9 +110,7 @@ export const scrapeInfo = async (id: string) => {
     const sensors = featuresTable.find("td[data-spec='sensors']").text();
 
     const batteryTable = $("div#specs-list table:eq(11)");
-    const battType = batteryTable
-      .find("td[data-spec='batdescription1']")
-      .text();
+    const battType = batteryTable.find("td[data-spec='batdescription1']").text();
     const charging = batteryTable.find("tr:eq(1) td.nfo").text();
 
     const miscTable = $("div#specs-list table:eq(12)");
@@ -144,79 +118,35 @@ export const scrapeInfo = async (id: string) => {
     const models = miscTable.find("td[data-spec='models']").text();
 
     return {
-      name,
-      cover,
-      network,
+      name, cover, network,
       launced: { announced, status },
       body: { dimension, weight, sim, other },
       display: { type, size, resolution, protection, displayOther },
       platform: { os, chipset, cpu, gpu },
-      memory: [
-        {
-          label: "card",
-          value: card,
-        },
-        { label: "internal", value: internal },
-        { label: "otherMemory", value: otherMemory },
-      ],
-      mainCamera: {
-        mainModules,
-        mainFeatures,
-        mainVideo,
-      },
-      selfieCamera: {
-        selfieModules,
-        selfieFeatures,
-        selfieVideo,
-      },
-      sound: {
-        loudSpeaker,
-        audioJack,
-        otherSound,
-      },
-      comms: {
-        wlan,
-        bluetooth,
-        gps,
-        nfc,
-        infrared,
-        radio,
-        usb,
-      },
-      sensors,
-      battery: {
-        battType,
-        charging,
-      },
-      misc: {
-        colors,
-        models,
-      },
+      memory: [{ label: "card", value: card }, { label: "internal", value: internal }, { label: "otherMemory", value: otherMemory }],
+      mainCamera: { mainModules, mainFeatures, mainVideo },
+      selfieCamera: { selfieModules, selfieFeatures, selfieVideo },
+      sound: { loudSpeaker, audioJack, otherSound },
+      comms: { wlan, bluetooth, gps, nfc, infrared, radio, usb },
+      sensors, battery: { battType, charging },
+      misc: { colors, models },
     };
   } catch (error) {
-    console.log(error);
+    console.error("scrapeInfo error:", error);
+    return {};
   }
 };
 
+// ---------- images ----------
 export const scrapeImages = async (id: string) => {
   try {
-    const imageDocument = await axios.get(`${GSM_ARENA}/${id}`);
-
-    const $ = cheerio.load(imageDocument.data);
-
-    // Select the first h2 element within the pictures-list class
+    const { data } = await axiosGSM.get(`${GSM_ARENA}/${id}`);
+    const $ = cheerio.load(data);
     const firstH2 = $("#pictures-list h2").first();
-
-    // Select all the img elements that come after the first h2
     const imagesAfterFirstH2 = firstH2.nextAll("img");
-
-    // Extract the src attribute from each img element
-    const imageLinks = imagesAfterFirstH2
-      .map((index, element) => $(element).attr("src"))
-      .get();
-
-    return imageLinks;
+    return imagesAfterFirstH2.map((_, el) => $(el).attr("src")).get();
   } catch (error) {
-    console.log(error);
+    console.error("scrapeImages error:", error);
+    return [];
   }
 };
